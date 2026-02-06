@@ -62,7 +62,8 @@ function UI.drawScoreboard(players, currentTurn, round, roundsToPlay, category)
         end
 
         local botTag = p.isBot and " [BOT]" or ""
-        local shieldTag = p.shield and " 🛡️" or ""
+        -- Zamijenjen emoji tekstom
+        local shieldTag = p.shield and " [SHIELD]" or ""
         love.graphics.print(
             p.name .. botTag .. "  Score: " .. p.score .. "  Streak: " .. p.streak .. shieldTag,
             400,
@@ -82,14 +83,14 @@ end
 function UI.drawGuesses(hitsList, missesList)
     love.graphics.setFont(UI.fontSmall)
     love.graphics.setColor(1,1,1)
-    love.graphics.print("Pogođena slova: " .. (hitsList ~= "" and hitsList or "-"), 400, 310)
-    love.graphics.print("Promašena slova: " .. (missesList ~= "" and missesList or "-"), 400, 330)
+    love.graphics.print("Pogodena slova: " .. (hitsList ~= "" and hitsList or "-"), 400, 310)
+    love.graphics.print("Promasena slova: " .. (missesList ~= "" and missesList or "-"), 400, 330)
 end
 
 function UI.drawInput(inputText, hintCost, shieldCost)
     love.graphics.setFont(UI.fontMed)
     love.graphics.setColor(1,1,1)
-    love.graphics.print("Unos (slovo ili riječ) + Enter:", 400, 370)
+    love.graphics.print("Unos (slovo ili rijec) + Enter:", 400, 370)
     love.graphics.print("> " .. (inputText or ""), 400, 398)
 
     love.graphics.setFont(UI.fontSmall)
@@ -108,13 +109,13 @@ function UI.drawRules(show)
     love.graphics.setColor(1,1,1)
     love.graphics.print(
         "PRAVILA:\n" ..
-        "- Upiši slovo ili cijelu riječ i stisni Enter\n" ..
-        "- Ako ponoviš isto slovo: dobit ćeš poruku da probaš drugo\n" ..
-        "- Promašaj dodaje dio hangmana i prelazi potez\n" ..
-        "- Hint otkriva slovo (košta bodove)\n" ..
-        "- Shield blokira sljedeću grešku (košta bodove)\n" ..
-        "- Pogađanje cijele riječi: točno = win, netočno = kazna\n" ..
-        "- Cilj: najviše bodova nakon svih rundi",
+        "- Upisi slovo ili cijelu rijec i stisni Enter\n" ..
+        "- Ako ponovis isto slovo: dobit ces poruku da probas drugo\n" ..
+        "- Promasaj dodaje dio hangmana i prelazi potez\n" ..
+        "- Hint otkriva slovo (kosta bodove)\n" ..
+        "- Shield blokira sljedecu gresku (kosta bodove)\n" ..
+        "- Pogadanje cijele rijeci: tocno = win, netocno = kazna\n" ..
+        "- Cilj: najvise bodova nakon svih rundi",
         50, 470
     )
 end
@@ -171,7 +172,7 @@ end
 function UI.drawHangmanText(mistakes, maxMistakes)
     love.graphics.setFont(UI.fontSmall)
     love.graphics.setColor(1,1,1)
-    love.graphics.print(("Greške: %d/%d"):format(mistakes, maxMistakes), 50, 50)
+    love.graphics.print(("Greske: %d/%d"):format(mistakes, maxMistakes), 50, 50)
 end
 
 -- ---------- ROUND END / MATCH END ----------
@@ -184,7 +185,7 @@ function UI.drawRoundEnd(title, msg, subtitle)
     love.graphics.print(msg or "", 340, 250)
 
     love.graphics.setFont(UI.fontSmall)
-    love.graphics.print(subtitle or "N = sljedeća runda | R = restart match", 380, 310)
+    love.graphics.print(subtitle or "N = sljedeca runda | R = restart match", 380, 310)
 end
 
 return UI

@@ -1,3 +1,41 @@
+<onefilellm_output>
+<source type="local_folder" path=".">
+
+<file path="conf.lua">
+function love.conf(t)
+    t.window.title = "Competitive Hangman"
+    t.window.width = 1200
+    t.window.height = 700
+end
+
+</file>
+
+<file path="main.lua">
+local Game = require("src.game")
+
+function love.load()
+    Game.load()
+end
+
+function love.update(dt)
+    Game.update(dt)
+end
+
+function love.draw()
+    Game.draw()
+end
+
+function love.keypressed(key)
+    Game.keypressed(key)
+end
+
+function love.textinput(t)
+    Game.textinput(t)
+end
+
+</file>
+
+<file path="src\game.lua">
 local UI = require("src.ui")
 local WordManager = require("src.wordManager")
 local Player = require("src.player")
@@ -51,9 +89,6 @@ Game.showRules = true
 
 Game.timeLeft = SETTINGS.turnTime
 Game.shakeT = 0
-
--- Varijabla za sprječavanje "curenja" inputa pri promjeni stanja
-Game.skipInput = false 
 
 -- ----- Audio (optional) -----
 local sounds = {hit=nil, miss=nil, win=nil, lose=nil, click=nil}
@@ -185,7 +220,7 @@ local function addMistake(p, amount)
     amount = amount or 1
     if p.shield then
         p.shield = false
-        Game.message = "Shield blokirao gresku!"
+        Game.message = "🛡️ Shield blokirao grešku!"
         return false
     end
     Game.mistakes = Game.mistakes + amount
@@ -198,12 +233,12 @@ local function handleLetter(ch)
     local p = currentPlayer()
 
     if Game.guessed[ch] then
-        Game.message = ("Slovo '%s' je vec pogodeno. Probaj drugo."):format(ch)
+        Game.message = ("Slovo '%s' je već pogođeno. Probaj drugo."):format(ch)
         playS(sounds.click)
         return
     end
     if Game.missed[ch] then
-        Game.message = ("Slovo '%s' je vec promaseno. Probaj drugo."):format(ch)
+        Game.message = ("Slovo '%s' je već promašeno. Probaj drugo."):format(ch)
         playS(sounds.click)
         return
     end
@@ -216,7 +251,7 @@ local function handleLetter(ch)
         p.streak = p.streak + 1
         local pts = applyStreakMult(p, SCORE.letterHit * revealed)
         p:addScore(pts)
-        Game.message = ("%s pogodio '%s' (+%d)"):format(p.name, ch, pts)
+        Game.message = ("✅ %s pogodio '%s' (+%d)"):format(p.name, ch, pts)
         playS(sounds.hit)
 
         -- correct keeps turn (competitive)
@@ -224,7 +259,7 @@ local function handleLetter(ch)
             local bonus = applyStreakMult(p, SCORE.wordWinBase)
             p:addScore(bonus)
             playS(sounds.win)
-            endRound("KRAJ RUNDE", ("%s je pogodio rijec! Bonus +%d. Rijec: %s"):format(p.name, bonus, Game.word))
+            endRound("KRAJ RUNDE", ("🎉 %s je pogodio riječ! Bonus +%d. Riječ: %s"):format(p.name, bonus, Game.word))
         end
     else
         Game.missed[ch] = true
@@ -232,13 +267,13 @@ local function handleLetter(ch)
         p:addScore(SCORE.miss)
         local added = addMistake(p, 1)
         if added then
-            Game.message = ("%s promasio '%s' (%d bodova)"):format(p.name, ch, SCORE.miss)
+            Game.message = ("❌ %s promašio '%s' (%d bodova)"):format(p.name, ch, SCORE.miss)
             playS(sounds.miss)
         end
 
         if Game.mistakes >= Game.maxMistakes then
             playS(sounds.lose)
-            endRound("KRAJ RUNDE", ("Hangman gotov! Rijec je bila: %s"):format(Game.word))
+            endRound("KRAJ RUNDE", ("💀 Hangman gotov! Riječ je bila: %s"):format(Game.word))
         else
             nextTurn()
         end
@@ -256,19 +291,19 @@ local function handleWordGuess(guess)
         p:addScore(bonus)
         p.streak = p.streak + 2
         playS(sounds.win)
-        endRound("KRAJ RUNDE", ("%s je pogodio CIJELU rijec! +%d."):format(p.name, bonus))
+        endRound("KRAJ RUNDE", ("🏆 %s je pogodio CIJELU riječ! +%d."):format(p.name, bonus))
     else
         p.streak = 0
         p:addScore(SCORE.wordMiss)
         local added = addMistake(p, 2)
         if added then
-            Game.message = ("Netocna rijec! %s (%d bodova)"):format(p.name, SCORE.wordMiss)
+            Game.message = ("❌ Netočna riječ! %s (%d bodova)"):format(p.name, SCORE.wordMiss)
             playS(sounds.miss)
         end
 
         if Game.mistakes >= Game.maxMistakes then
             playS(sounds.lose)
-            endRound("KRAJ RUNDE", ("Hangman gotov! Rijec je bila: %s"):format(Game.word))
+            endRound("KRAJ RUNDE", ("💀 Hangman gotov! Riječ je bila: %s"):format(Game.word))
         else
             nextTurn()
         end
@@ -316,10 +351,10 @@ function Game.update(dt)
             p.streak = 0
             p:addScore(SCORE.miss)
             addMistake(p, 1)
-            Game.message = "Vrijeme isteklo! Potez prebacen."
+            Game.message = "⏳ Vrijeme isteklo! Potez prebačen."
             if Game.mistakes >= Game.maxMistakes then
                 playS(sounds.lose)
-                endRound("KRAJ RUNDE", ("Hangman gotov! Rijec je bila: %s"):format(Game.word))
+                endRound("KRAJ RUNDE", ("💀 Hangman gotov! Riječ je bila: %s"):format(Game.word))
             else
                 nextTurn()
             end
@@ -355,7 +390,7 @@ function Game.draw()
     end
 
     if Game.state == "round_end" then
-        UI.drawRoundEnd("KRAJ RUNDE", Game.message, "N = sljedeca runda | R = restart match")
+        UI.drawRoundEnd("KRAJ RUNDE", Game.message, "N = sljedeća runda | R = restart match")
         return
     end
 
@@ -369,11 +404,6 @@ function Game.draw()
 end
 
 function Game.textinput(t)
-    if Game.skipInput then
-        Game.skipInput = false
-        return
-    end
-
     if Game.state ~= "play" then return end
     if t:match("[%a]") or t == " " or t == "-" then
         Game.input = Game.input .. t:upper()
@@ -403,19 +433,14 @@ function Game.keypressed(key)
             -- rotate starting player each round
             Game.turn = ((Game.round - 1) % #Game.players) + 1
             startRound()
-            Game.skipInput = true
         elseif key == "r" then
             startMatch()
-            Game.skipInput = true
         end
         return
     end
 
     if Game.state == "match_end" then
-        if key == "r" then 
-            startMatch() 
-            Game.skipInput = true
-        end
+        if key == "r" then startMatch() end
         return
     end
 
@@ -434,7 +459,7 @@ function Game.keypressed(key)
 
         local p = currentPlayer()
         if p.score < POWER.hintCost then
-            Game.message = ("Hint kosta %d bodova."):format(POWER.hintCost)
+            Game.message = ("Hint košta %d bodova."):format(POWER.hintCost)
             playS(sounds.click)
             return
         end
@@ -456,7 +481,7 @@ function Game.keypressed(key)
         p.streak = 0
         local ch = hidden[love.math.random(#hidden)]
         handleLetter(ch) -- handleLetter već radi sve (i štiti od ponavljanja)
-        Game.message = ("Hint: otkriveno '%s' (-%d)"):format(ch, POWER.hintCost)
+        Game.message = ("💡 Hint: otkriveno '%s' (-%d)"):format(ch, POWER.hintCost)
         nextTurn() -- hint završava potez (balans)
         return
     end
@@ -464,42 +489,275 @@ function Game.keypressed(key)
     if key == "f2" then
         local p = currentPlayer()
         if p.shield then
-            Game.message = "Shield je vec aktivan."
+            Game.message = "Shield je već aktivan."
             return
         end
         if p.score < POWER.shieldCost then
-            Game.message = ("Shield kosta %d bodova."):format(POWER.shieldCost)
+            Game.message = ("Shield košta %d bodova."):format(POWER.shieldCost)
             return
         end
         p:addScore(-POWER.shieldCost)
         p.shield = true
-        Game.message = ("Shield aktiviran (-%d)."):format(POWER.shieldCost)
+        Game.message = ("🛡️ Shield aktiviran (-%d)."):format(POWER.shieldCost)
         nextTurn()
         return
     end
 
     if key == "return" or key == "kpenter" then
         local guess = upperTrim(Game.input)
-        local wordLen = #Game.word
-        local guessLen = #guess
+        Game.input = ""
 
         if guess == "" then
-            Game.message = "Upisi slovo ili rijec pa Enter."
+            Game.message = "Upiši slovo ili riječ pa Enter."
             return
         end
 
-        -- Očisti input u svakom slučaju (validno ili ne)
-        Game.input = ""
-
-        if guessLen == 1 then
+        if #guess == 1 then
             handleLetter(guess)
-        elseif guessLen == wordLen then
-            handleWordGuess(guess)
         else
-            Game.message = ("Nevazeci unos! Mora biti 1 slovo ili tocno %d znakova."):format(wordLen)
-            playS(sounds.click)
+            handleWordGuess(guess)
         end
     end
 end
 
 return Game
+
+</file>
+
+<file path="src\player.lua">
+local Player = {}
+Player.__index = Player
+
+function Player.new(name)
+    local self = setmetatable({}, Player)
+    self.name = name
+    self.score = 0
+    self.streak = 0
+    self.shield = false
+    self.isBot = false
+    return self
+end
+
+function Player:addScore(points)
+    self.score = math.max(0, self.score + points)
+end
+
+return Player
+
+</file>
+
+<file path="src\ui.lua">
+local UI = {}
+
+UI.fontTitle = nil
+UI.fontBig = nil
+UI.fontMed = nil
+UI.fontSmall = nil
+
+function UI.load()
+    UI.fontTitle = love.graphics.newFont(40)
+    UI.fontBig = love.graphics.newFont(28)
+    UI.fontMed = love.graphics.newFont(18)
+    UI.fontSmall = love.graphics.newFont(14)
+end
+
+-- ---------- MENU ----------
+function UI.drawMenu(selectedIndex)
+    love.graphics.setFont(UI.fontTitle)
+    love.graphics.setColor(1,1,1)
+    love.graphics.print("VJESALO (Multiplayer)", 320, 120)
+
+    local items = { "Start Game", "Quit" }
+    love.graphics.setFont(UI.fontBig)
+
+    for i, item in ipairs(items) do
+        if i == selectedIndex then
+            love.graphics.setColor(1, 1, 0)
+            love.graphics.print("> " .. item, 470, 260 + i*50)
+        else
+            love.graphics.setColor(1,1,1)
+            love.graphics.print(item, 500, 260 + i*50)
+        end
+    end
+
+    love.graphics.setFont(UI.fontSmall)
+    love.graphics.setColor(1,1,1)
+    love.graphics.print("Tipke: Gore/Dolje, Enter. ESC izlaz.", 440, 500)
+end
+
+-- ---------- HUD ----------
+function UI.drawCurrentPlayer(player, timeLeft)
+    love.graphics.setFont(UI.fontBig)
+    love.graphics.setColor(1, 1, 0)
+    love.graphics.print("Na redu: " .. player.name, 400, 50)
+
+    love.graphics.setFont(UI.fontSmall)
+    love.graphics.setColor(1,1,1)
+    love.graphics.print(("Vrijeme: %.0fs"):format(timeLeft), 820, 62)
+end
+
+function UI.drawScoreboard(players, currentTurn, round, roundsToPlay, category)
+    love.graphics.setFont(UI.fontMed)
+    love.graphics.setColor(1,1,1)
+    love.graphics.print(("Runda: %d/%d  |  Kategorija: %s"):format(round, roundsToPlay, category or "-"), 400, 95)
+
+    love.graphics.print("Rezultati:", 400, 125)
+
+    for i, p in ipairs(players) do
+        if i == currentTurn then
+            love.graphics.setColor(0,1,0)
+        else
+            love.graphics.setColor(1,1,1)
+        end
+
+        local botTag = p.isBot and " [BOT]" or ""
+        local shieldTag = p.shield and " 🛡️" or ""
+        love.graphics.print(
+            p.name .. botTag .. "  Score: " .. p.score .. "  Streak: " .. p.streak .. shieldTag,
+            400,
+            150 + i * 24
+        )
+    end
+
+    love.graphics.setColor(1,1,1)
+end
+
+function UI.drawWord(mask)
+    love.graphics.setFont(love.graphics.newFont(34))
+    love.graphics.setColor(1,1,1)
+    love.graphics.print(table.concat(mask, " "), 400, 220)
+end
+
+function UI.drawGuesses(hitsList, missesList)
+    love.graphics.setFont(UI.fontSmall)
+    love.graphics.setColor(1,1,1)
+    love.graphics.print("Pogođena slova: " .. (hitsList ~= "" and hitsList or "-"), 400, 310)
+    love.graphics.print("Promašena slova: " .. (missesList ~= "" and missesList or "-"), 400, 330)
+end
+
+function UI.drawInput(inputText, hintCost, shieldCost)
+    love.graphics.setFont(UI.fontMed)
+    love.graphics.setColor(1,1,1)
+    love.graphics.print("Unos (slovo ili riječ) + Enter:", 400, 370)
+    love.graphics.print("> " .. (inputText or ""), 400, 398)
+
+    love.graphics.setFont(UI.fontSmall)
+    love.graphics.print(("Tipke: [F1] hint (-%d)  [F2] shield (-%d)  [TAB] pravila  [ESC] izlaz"):format(hintCost, shieldCost), 400, 430)
+end
+
+function UI.drawMessage(msg)
+    love.graphics.setFont(UI.fontSmall)
+    love.graphics.setColor(1,1,1)
+    love.graphics.print(msg or "", 400, 455)
+end
+
+function UI.drawRules(show)
+    if not show then return end
+    love.graphics.setFont(UI.fontSmall)
+    love.graphics.setColor(1,1,1)
+    love.graphics.print(
+        "PRAVILA:\n" ..
+        "- Upiši slovo ili cijelu riječ i stisni Enter\n" ..
+        "- Ako ponoviš isto slovo: dobit ćeš poruku da probaš drugo\n" ..
+        "- Promašaj dodaje dio hangmana i prelazi potez\n" ..
+        "- Hint otkriva slovo (košta bodove)\n" ..
+        "- Shield blokira sljedeću grešku (košta bodove)\n" ..
+        "- Pogađanje cijele riječi: točno = win, netočno = kazna\n" ..
+        "- Cilj: najviše bodova nakon svih rundi",
+        50, 470
+    )
+end
+
+-- ---------- HANGMAN GRAPHIC (simple + shake) ----------
+local function drawGallows(x, y)
+    love.graphics.setLineWidth(6)
+    love.graphics.line(x, y+220, x+180, y+220)
+    love.graphics.line(x+40, y+220, x+40, y)
+    love.graphics.line(x+40, y, x+140, y)
+    love.graphics.line(x+140, y, x+140, y+40)
+end
+
+local function drawParts(x, y, parts)
+    local hx, hy = x+140, y+60
+    love.graphics.setLineWidth(4)
+
+    local function part(i)
+        if i == 1 then love.graphics.circle("line", hx, hy, 18)
+        elseif i == 2 then love.graphics.line(hx, hy+18, hx, hy+75)
+        elseif i == 3 then love.graphics.line(hx, hy+35, hx-28, hy+55)
+        elseif i == 4 then love.graphics.line(hx, hy+35, hx+28, hy+55)
+        elseif i == 5 then love.graphics.line(hx, hy+75, hx-22, hy+110)
+        elseif i == 6 then love.graphics.line(hx, hy+75, hx+22, hy+110)
+        elseif i == 7 then love.graphics.points(hx-6, hy-4)
+        elseif i == 8 then love.graphics.points(hx+6, hy-4)
+        elseif i == 9 then love.graphics.arc("line", "open", hx, hy+6, 8, math.rad(20), math.rad(160))
+        elseif i == 10 then love.graphics.rectangle("line", hx-10, hy-48, 20, 18)
+        end
+    end
+
+    for i=1, parts do part(i) end
+end
+
+function UI.drawHangmanGraphic(mistakes, maxMistakes, shakeT)
+    local x, y = 50, 80
+
+    local sx, sy = 0, 0
+    if shakeT and shakeT > 0 then
+        sx = love.math.random(-4, 4)
+        sy = love.math.random(-4, 4)
+    end
+
+    love.graphics.push()
+    love.graphics.translate(sx, sy)
+    love.graphics.setColor(1,1,1)
+    drawGallows(x, y)
+
+    local partsToDraw = math.min(mistakes, maxMistakes or mistakes)
+    drawParts(x, y, partsToDraw)
+    love.graphics.pop()
+end
+
+function UI.drawHangmanText(mistakes, maxMistakes)
+    love.graphics.setFont(UI.fontSmall)
+    love.graphics.setColor(1,1,1)
+    love.graphics.print(("Greške: %d/%d"):format(mistakes, maxMistakes), 50, 50)
+end
+
+-- ---------- ROUND END / MATCH END ----------
+function UI.drawRoundEnd(title, msg, subtitle)
+    love.graphics.setFont(UI.fontTitle)
+    love.graphics.setColor(1,1,1)
+    love.graphics.print(title, 380, 170)
+
+    love.graphics.setFont(UI.fontMed)
+    love.graphics.print(msg or "", 340, 250)
+
+    love.graphics.setFont(UI.fontSmall)
+    love.graphics.print(subtitle or "N = sljedeća runda | R = restart match", 380, 310)
+end
+
+return UI
+
+</file>
+
+<file path="src\wordManager.lua">
+local WordManager = {}
+
+WordManager.bank = {
+    {category="Gradovi", word="DUBROVNIK"},
+    {category="Tech", word="UMJETNA INTELIGENCIJA"},
+    {category="Tech", word="PROGRAMIRANJE"},
+    {category="Životinje", word="KROKODIL"},
+    {category="Filmovi", word="THE MATRIX"},
+}
+
+function WordManager.getRandom()
+    return WordManager.bank[love.math.random(1, #WordManager.bank)]
+end
+
+return WordManager
+
+</file>
+
+</source>
+</onefilellm_output>
