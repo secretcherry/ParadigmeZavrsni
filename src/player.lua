@@ -7,7 +7,6 @@ function Player.new(name)
     self.score = 0
     self.streak = 0
     self.shield = false
-    self.isBot = false
     return self
 end
 

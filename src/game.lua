@@ -12,17 +12,13 @@ local SETTINGS = {
 }
 
 local SCORE = {
-    letterHit = 10,        -- Mali bodovi za otkrivanje slova (održava streak)
-    miss = -5,             -- Kazna za promašaj slova
-    
-    -- NOVO: Logika za pogađanje riječi
-    perHiddenLetter = 50,  -- Koliko vrijedi svako NEOTKRIVENO slovo kad se pogodi riječ
-    wordWinFixed = 100,    -- Fiksni bonus za pogađanje riječi
-    
-    wordCompleteBonus = 50, -- Bonus ako se riječ dovrši pogađanjem zadnjeg slova (manje od wordWinFixed)
-    
-    wordMiss = -20,        -- Veća kazna za promašaj cijele riječi
-    streak3Mult = 1.2,     -- Smanjili smo mult malo da ne "razbije" igru
+    letterHit = 10,
+    miss = -5,
+    perHiddenLetter = 50,
+    wordWinFixed = 100,
+    wordCompleteBonus = 50,
+    wordMiss = -20,
+    streak3Mult = 1.2,
     streak5Mult = 1.5
 }
 
@@ -32,7 +28,8 @@ local POWER = {
 }
 
 -- ----- State -----
-Game.state = "menu"
+Game.state = "menu" -- menu, transition_freeze, play, round_end, match_end, highscore_entry, leaderboard, confirmation
+Game.previousState = "" -- Za povratak ako se odustane od izlaza
 Game.menuIndex = 1
 Game.numPlayers = 1
 
@@ -51,29 +48,64 @@ Game.maxMistakes = 8
 Game.input = ""
 Game.message = ""
 Game.showRules = true
+Game.skipInput = false 
 
 Game.timeLeft = SETTINGS.turnTime
 Game.shakeT = 0
-Game.skipInput = false 
 
 Game.highscores = {}
 Game.winnerPlayer = nil
 Game.tempName = ""
 
--- ----- Audio -----
-local sounds = {hit=nil, miss=nil, win=nil, lose=nil, click=nil}
-local function safeLoadSound(path)
-    local ok, src = pcall(love.audio.newSource, path, "static")
-    if ok then return src end
-    return nil
+-- ----- Audio System -----
+local sounds = {
+    click = nil,
+    correct = nil,
+    enterGame = nil,
+    gameOver = nil,
+    bgmMenu = nil,
+    bgmGame = nil
+}
+
+local function loadAudio(path, type)
+    local ok, src = pcall(love.audio.newSource, path, type)
+    if ok then return src else print("Failed to load audio: " .. path) return nil end
 end
-local function playS(s)
-    if s then s:stop(); s:play() end
+
+local function playClick()
+    if sounds.click then
+        local s = sounds.click:clone()
+        s:play()
+    end
+end
+
+local function playSfx(s)
+    if s then
+        if s:isPlaying() then s:stop() end
+        s:play()
+    end
+end
+
+local function playMusic(track)
+    if track == sounds.bgmMenu then
+        if sounds.bgmGame and sounds.bgmGame:isPlaying() then sounds.bgmGame:stop() end
+    elseif track == sounds.bgmGame then
+        if sounds.bgmMenu and sounds.bgmMenu:isPlaying() then sounds.bgmMenu:stop() end
+    end
+    
+    if track and not track:isPlaying() then
+        track:setLooping(true)
+        track:setVolume(0.5)
+        track:play()
+    end
+end
+
+local function stopMusic()
+    if sounds.bgmMenu then sounds.bgmMenu:stop() end
+    if sounds.bgmGame then sounds.bgmGame:stop() end
 end
 
 -- ----- Helpers -----
-local function clamp(x,a,b) if x<a then return a elseif x>b then return b else return x end end
-
 local function upperTrim(s)
     s = (s or ""):gsub("^%s+",""):gsub("%s+$","")
     s = s:gsub("%s+"," ")
@@ -94,7 +126,6 @@ local function isWin(mask)
     return true
 end
 
--- Broji koliko je jos ostalo neotkrivenih slova (underscores)
 local function countHidden(mask)
     local c = 0
     for i=1,#mask do if mask[i] == "_" then c=c+1 end end
@@ -138,7 +169,7 @@ local function computeMaxMistakes(word)
         local c=word:sub(i,i)
         if c~=" " and c~="-" then len=len+1 end
     end
-    return clamp(6 + math.floor(len/2), 6, 16)
+    return math.max(6, math.min(16, 6 + math.floor(len/2)))
 end
 
 local function currentPlayer()
@@ -170,41 +201,44 @@ local function startRound()
     end
 end
 
-local function startMatch()
+local function beginGameplay()
+    stopMusic() 
     Game.players = {}
     for i = 1, Game.numPlayers do
-        local p = Player.new("Igrac " .. i)
-        p.isBot = false 
-        table.insert(Game.players, p)
+        table.insert(Game.players, Player.new("Igrac " .. i))
     end
     Game.turn = 1
     Game.round = 1
     Game.state = "play"
+    playMusic(sounds.bgmGame)
     startRound()
 end
 
-local function checkLeaderboardEligibility(player)
-    Game.highscores = Storage.load()
-    if #Game.highscores < 3 then return true end
-    local lowest = Game.highscores[#Game.highscores]
-    if player.score > lowest.score then return true end
-    return false
+local function initStartSequence()
+    if sounds.enterGame and not sounds.enterGame:isPlaying() then
+        sounds.enterGame:play()
+    end
+    Game.state = "transition_freeze" 
 end
 
 local function endRound(title, msg)
+    stopMusic() 
     if Game.round >= SETTINGS.roundsToPlay then
         local best = Game.players[1]
         for i=2,#Game.players do if Game.players[i].score > best.score then best = Game.players[i] end end
-        
         Game.winnerPlayer = best
         Game.message = msg or ""
         
-        if checkLeaderboardEligibility(best) then
+        Game.highscores = Storage.load()
+        local isEligible = (#Game.highscores < 3 or best.score > Game.highscores[#Game.highscores].score)
+        
+        if isEligible then
             Game.state = "highscore_entry"
             Game.tempName = ""
-            Game.skipInput = false 
+            playSfx(sounds.correct)
         else
             Game.state = "match_end"
+            playSfx(sounds.correct)
         end
     else
         Game.state = "round_end"
@@ -217,6 +251,7 @@ local function addMistake(p, amount)
     if p.shield then
         p.shield = false
         Game.message = "Shield blokirao gresku!"
+        playSfx(sounds.correct)
         return false
     end
     Game.mistakes = Game.mistakes + amount
@@ -224,18 +259,10 @@ local function addMistake(p, amount)
     return true
 end
 
--- ----- Guess logic -----
 local function handleLetter(ch)
     local p = currentPlayer()
-
-    if Game.guessed[ch] then
-        Game.message = ("Slovo '%s' je vec pogodeno."):format(ch)
-        playS(sounds.click)
-        return
-    end
-    if Game.missed[ch] then
-        Game.message = ("Slovo '%s' je vec promaseno."):format(ch)
-        playS(sounds.click)
+    if Game.guessed[ch] or Game.missed[ch] then
+        playClick()
         return
     end
 
@@ -243,36 +270,28 @@ local function handleLetter(ch)
     if occ > 0 then
         local revealed = reveal(Game.word, Game.mask, ch)
         Game.guessed[ch] = true
-
         p.streak = p.streak + 1
-        
-        -- Bodovi za slovo su manji, ali se množe s brojem pojavljivanja
         local pts = applyStreakMult(p, SCORE.letterHit * revealed)
         p:addScore(pts)
         Game.message = ("%s pogodio '%s' (+%d)"):format(p.name, ch, pts)
-        playS(sounds.hit)
+        playSfx(sounds.correct)
 
-        -- Ako je slovo kompletiralo riječ (nema više underscora)
         if isWin(Game.mask) then
-            -- Ovdje NE dajemo veliki bonus za pogađanje cijele riječi jer je igrač išao linijom manjeg otpora
             local bonus = applyStreakMult(p, SCORE.wordCompleteBonus)
             p:addScore(bonus)
-            playS(sounds.win)
-            endRound("KRAJ RUNDE", ("%s je kompletirao rijec! Bonus +%d. Rijec: %s"):format(p.name, bonus, Game.word))
+            playSfx(sounds.correct)
+            endRound("KRAJ RUNDE", ("%s je kompletirao rijec! Bonus +%d"):format(p.name, bonus))
         end
     else
         Game.missed[ch] = true
         p.streak = 0
         p:addScore(SCORE.miss)
-        local added = addMistake(p, 1)
-        if added then
-            Game.message = ("%s promasio '%s' (%d bodova)"):format(p.name, ch, SCORE.miss)
-            playS(sounds.miss)
+        if addMistake(p, 1) then
+            Game.message = ("%s promasio '%s'"):format(p.name, ch)
         end
-
         if Game.mistakes >= Game.maxMistakes then
-            playS(sounds.lose)
-            endRound("KRAJ RUNDE", ("Hangman gotov! Rijec je bila: %s"):format(Game.word))
+            playSfx(sounds.gameOver)
+            endRound("KRAJ RUNDE", ("Hangman gotov! Rijec: %s"):format(Game.word))
         else
             nextTurn()
         end
@@ -281,60 +300,24 @@ end
 
 local function handleWordGuess(guess)
     local p = currentPlayer()
-
     if guess == Game.word then
-        -- Izračunaj koliko je slova BILO skriveno prije ovog poteza
         local hiddenCount = countHidden(Game.mask)
-        
-        -- Otkrij sve za vizualni dojam
         for i=1,#Game.word do Game.mask[i] = Game.word:sub(i,i) end
-
-        -- LOGIKA BODOVANJA:
-        -- Nagrada = (BrojSkrivenih * CijenaPoSlovu) + FiksniBonus
-        -- Npr. Riječ od 8 slova, 0 otkrivenih: (8 * 50) + 100 = 500 bodova
-        -- Npr. Riječ od 8 slova, 6 otkrivenih (ostalo 2): (2 * 50) + 100 = 200 bodova
-        -- Ako je korisnik otkrio 7/8 slova pojedinačno dobio je 7*10=70 bodova.
-        -- Sad pogađa riječ: (1 * 50) + 100 = 150. Ukupno 220.
-        -- 220 < 500. Sustav radi.
-        
         local rawPoints = (hiddenCount * SCORE.perHiddenLetter) + SCORE.wordWinFixed
         local totalPoints = applyStreakMult(p, rawPoints)
-        
         p:addScore(totalPoints)
-        p.streak = p.streak + 2 -- Bonus streak za hrabrost
-        
-        playS(sounds.win)
-        endRound("KRAJ RUNDE", ("%s POGODIO RIJEC! (+%d)\n(Skriveno slova: %d)"):format(p.name, totalPoints, hiddenCount))
+        p.streak = p.streak + 2 
+        playSfx(sounds.correct)
+        endRound("KRAJ RUNDE", ("%s POGODIO RIJEC! (+%d)"):format(p.name, totalPoints))
     else
         p.streak = 0
         p:addScore(SCORE.wordMiss)
-        local added = addMistake(p, 2) -- Pogađanje riječi košta 2 greške
-        if added then
-            Game.message = ("Netocna rijec! %s (%d bodova)"):format(p.name, SCORE.wordMiss)
-            playS(sounds.miss)
-        end
-
+        addMistake(p, 2)
         if Game.mistakes >= Game.maxMistakes then
-            playS(sounds.lose)
-            endRound("KRAJ RUNDE", ("Hangman gotov! Rijec je bila: %s"):format(Game.word))
+            playSfx(sounds.gameOver)
+            endRound("KRAJ RUNDE", ("Hangman gotov! Rijec: %s"):format(Game.word))
         else
             nextTurn()
-        end
-    end
-end
-
--- ----- Bot (simple frequency strategy) -----
-local FREQ = {"A","E","I","O","U","N","R","S","T","L","K","M","P","D","G","B","V","J","Z","C","H","F","Y","X","W","Q"}
-local function botTakeTurn()
-    local p = currentPlayer()
-    if not p.isBot then return end
-    
-    -- Bot logika: Ako je malo slova ostalo, probaj pogoditi riječ (jednostavna simulacija "pameti")
-    -- Za sada samo gađa slova
-    for _, ch in ipairs(FREQ) do
-        if not Game.guessed[ch] and not Game.missed[ch] then
-            handleLetter(ch)
-            return
         end
     end
 end
@@ -345,17 +328,28 @@ function Game.load()
     love.math.setRandomSeed(os.time())
     Game.highscores = Storage.load()
 
-    sounds.hit  = safeLoadSound("assets/sounds/hit.wav")
-    sounds.miss = safeLoadSound("assets/sounds/miss.wav")
-    sounds.win  = safeLoadSound("assets/sounds/win.wav")
-    sounds.lose = safeLoadSound("assets/sounds/lose.wav")
-    sounds.click = safeLoadSound("assets/sounds/click.wav")
+    sounds.click     = loadAudio("assets/sounds/click.mp3", "static")
+    sounds.correct   = loadAudio("assets/sounds/correct answer.mp3", "static")
+    sounds.enterGame = loadAudio("assets/sounds/enter game.mp3", "static")
+    sounds.gameOver  = loadAudio("assets/sounds/Game over.mp3", "static")
+    sounds.bgmMenu   = loadAudio("assets/sounds/main screen background music.mp3", "stream")
+    sounds.bgmGame   = loadAudio("assets/sounds/main game background.mp3", "stream")
 
     Game.state = "menu"
-    Game.menuIndex = 1
+    playMusic(sounds.bgmMenu)
 end
 
 function Game.update(dt)
+    if Game.state == "transition_freeze" then
+        if sounds.enterGame and not sounds.enterGame:isPlaying() then
+            beginGameplay()
+        end
+        return 
+    end
+
+    -- Zamrzni update logiku ako smo u confirmation screenu
+    if Game.state == "confirmation" then return end
+
     if Game.shakeT > 0 then Game.shakeT = math.max(0, Game.shakeT - dt) end
 
     if Game.state == "play" then
@@ -364,247 +358,167 @@ function Game.update(dt)
             local p = currentPlayer()
             p.streak = 0
             p:addScore(SCORE.miss)
+            playClick()
             addMistake(p, 1)
-            Game.message = "Vrijeme isteklo! Potez prebacen."
             if Game.mistakes >= Game.maxMistakes then
-                playS(sounds.lose)
-                endRound("KRAJ RUNDE", ("Hangman gotov! Rijec je bila: %s"):format(Game.word))
+                playSfx(sounds.gameOver)
+                endRound("KRAJ RUNDE", "Vrijeme isteklo!")
             else
                 nextTurn()
             end
         end
-        botTakeTurn()
     end
 end
 
 function Game.draw()
     love.graphics.clear(0.05, 0.05, 0.07, 1)
 
-    if Game.state == "menu" then
+    if Game.state == "menu" or Game.state == "transition_freeze" then
         UI.drawMenu(Game.menuIndex, Game.numPlayers)
-        return
-    end
-
-    if Game.state == "play" then
+    elseif Game.state == "play" then
         UI.drawHangmanGraphic(Game.mistakes, Game.maxMistakes, Game.shakeT)
         UI.drawHangmanText(Game.mistakes, Game.maxMistakes)
-
         UI.drawCurrentPlayer(currentPlayer(), Game.timeLeft)
         UI.drawScoreboard(Game.players, Game.turn, Game.round, SETTINGS.roundsToPlay, Game.category)
-
         UI.drawWord(Game.mask)
         UI.drawGuesses(setToSortedString(Game.guessed), setToSortedString(Game.missed))
         UI.drawInput(Game.input, POWER.hintCost, POWER.shieldCost)
         UI.drawMessage(Game.message)
-
         UI.drawRules(Game.showRules)
-        return
-    end
-
-    if Game.state == "round_end" then
+    elseif Game.state == "round_end" then
         UI.drawRoundEnd("KRAJ RUNDE", Game.message, "N = sljedeca runda | R = restart match")
-        return
-    end
-
-    if Game.state == "match_end" then
+    elseif Game.state == "match_end" then
         local best = Game.winnerPlayer
-        UI.drawRoundEnd("KRAJ MATCHA", ("Pobjednik: %s (Score: %d)\n%s"):format(best.name, best.score, Game.message or ""), "L = Leaderboard | R = novi match | ESC = izlaz")
-        return
-    end
-
-    if Game.state == "highscore_entry" then
-        UI.drawHighscoreInput("NOVI REKORD!", "Upisi svoje ime:", Game.tempName)
-        return
-    end
-
-    if Game.state == "leaderboard" then
+        UI.drawRoundEnd("KRAJ MATCHA", ("Pobjednik: %s"):format(best.name), "L = Leaderboard | R = novi match | ESC = izbornik")
+    elseif Game.state == "highscore_entry" then
+        UI.drawHighscoreInput("NOVI REKORD!", "Upisi ime:", Game.tempName)
+    elseif Game.state == "leaderboard" then
         UI.drawLeaderboard(Game.highscores, "R = novi match | ESC = izbornik")
-        return
+    elseif Game.state == "confirmation" then
+        UI.drawRoundEnd("POVRATAK U MENI?", "Napredak nece biti spremljen!", "Y = Potvrdi | ESC = Odustani")
     end
 end
 
 function Game.textinput(t)
-    if Game.skipInput then
+    if Game.state == "confirmation" then return end
+    if Game.skipInput then 
         Game.skipInput = false
-        return
+        return 
     end
 
     if Game.state == "play" then
         if t:match("[%a]") or t == " " or t == "-" then
+            playClick()
             Game.input = Game.input .. t:upper()
         end
     elseif Game.state == "highscore_entry" then
-        if #Game.tempName < 10 then
-            if t:match("[%w]") then
-                Game.tempName = Game.tempName .. t:upper()
-            end
+        if #Game.tempName < 10 and t:match("[%w]") then
+            playClick()
+            Game.tempName = Game.tempName .. t:upper()
         end
     end
 end
 
 function Game.keypressed(key)
-    if key == "escape" then 
-        if Game.state == "leaderboard" then 
+    if Game.state == "transition_freeze" then 
+        return 
+    end
+
+    -- Logika za ESC potvrdu
+    if Game.state == "confirmation" then
+        if key == "y" then
+            playClick()
             Game.state = "menu"
-            return
+            playMusic(sounds.bgmMenu)
+        elseif key == "escape" then
+            playClick()
+            Game.state = Game.previousState -- Vrati se tamo gdje si bio
         end
-        love.event.quit() 
+        return
+    end
+
+    if key == "escape" then 
+        playClick()
+        if Game.state == "menu" then
+            love.event.quit() -- Jedino u glavnom meniju ESC gasi igru
+        else
+            -- Za sva ostala stanja, traži potvrdu za izlaz u meni
+            Game.previousState = Game.state
+            Game.state = "confirmation"
+        end
+        return 
     end
 
     if Game.state == "menu" then
-        if key == "down" then 
-            Game.menuIndex = math.min(3, Game.menuIndex + 1)
-            playS(sounds.click) 
-        end
-        if key == "up" then 
-            Game.menuIndex = math.max(1, Game.menuIndex - 1)
-            playS(sounds.click) 
-        end
+        if key == "down" then Game.menuIndex = math.min(3, Game.menuIndex + 1); playClick() end
+        if key == "up" then Game.menuIndex = math.max(1, Game.menuIndex - 1); playClick() end
         if Game.menuIndex == 2 then
-            if key == "left" then
-                Game.numPlayers = math.max(1, Game.numPlayers - 1)
-                playS(sounds.click)
-            elseif key == "right" then
-                Game.numPlayers = math.min(4, Game.numPlayers + 1)
-                playS(sounds.click)
-            end
+            if key == "left" then Game.numPlayers = math.max(1, Game.numPlayers - 1); playClick()
+            elseif key == "right" then Game.numPlayers = math.min(4, Game.numPlayers + 1); playClick() end
         end
         if key == "return" or key == "kpenter" then
-            if Game.menuIndex == 1 then
-                startMatch()
-            elseif Game.menuIndex == 3 then
-                love.event.quit()
-            end
+            if Game.menuIndex == 1 then initStartSequence()
+            elseif Game.menuIndex == 3 then playClick(); love.event.quit() end
         end
-        return
-    end
-
-    if Game.state == "round_end" then
-        if key == "n" then
-            Game.round = Game.round + 1
-            Game.state = "play"
-            Game.turn = ((Game.round - 1) % #Game.players) + 1
-            startRound()
-            Game.skipInput = true
-        elseif key == "r" then
-            startMatch()
-            Game.skipInput = true
-        end
-        return
-    end
-
-    if Game.state == "match_end" then
-        if key == "r" then 
-            startMatch() 
-            Game.skipInput = true
-        elseif key == "l" then
-            Game.state = "leaderboard"
-        end
-        return
-    end
-
-    if Game.state == "highscore_entry" then
-        if key == "backspace" then
-            Game.tempName = Game.tempName:sub(1, -2)
-        elseif key == "return" or key == "kpenter" then
-            if #Game.tempName > 0 then
-                table.insert(Game.highscores, {name=Game.tempName, score=Game.winnerPlayer.score})
-                table.sort(Game.highscores, function(a,b) return a.score > b.score end)
-                while #Game.highscores > 3 do table.remove(Game.highscores) end
-                Storage.save(Game.highscores)
-                Game.state = "leaderboard"
-                playS(sounds.win)
-            end
-        end
-        return
-    end
-
-    if Game.state == "leaderboard" then
-        if key == "r" then
-            startMatch()
-            Game.skipInput = true
-        end
-        return
-    end
-
-    -- PLAY
-    if Game.state == "play" then
-        if key == "tab" then
-            Game.showRules = not Game.showRules
-            return
-        end
-
-        if key == "backspace" then
-            Game.input = Game.input:sub(1, -2)
-            return
-        end
-
-        if key == "f1" then
+    elseif Game.state == "play" then
+        if key == "tab" then playClick(); Game.showRules = not Game.showRules
+        elseif key == "backspace" then playClick(); Game.input = Game.input:sub(1, -2)
+        elseif key == "f1" then
+            playClick()
             local p = currentPlayer()
-            if p.score < POWER.hintCost then
-                Game.message = ("Hint kosta %d bodova."):format(POWER.hintCost)
-                playS(sounds.click)
-                return
-            end
-
-            local hidden = {}
-            for i=1,#Game.word do
-                if Game.mask[i] == "_" then
-                    local ch = Game.word:sub(i,i)
-                    if ch ~= " " and ch ~= "-" then hidden[#hidden+1] = ch end
+            if p.score >= POWER.hintCost then
+                local hidden = {}
+                for i=1,#Game.word do if Game.mask[i] == "_" then table.insert(hidden, Game.word:sub(i,i)) end end
+                if #hidden > 0 then
+                    p:addScore(-POWER.hintCost)
+                    handleLetter(hidden[love.math.random(#hidden)])
+                    nextTurn()
                 end
             end
-            if #hidden == 0 then
-                Game.message = "Nema skrivenih slova."
-                return
-            end
-
-            p:addScore(-POWER.hintCost)
-            p.streak = 0
-            local ch = hidden[love.math.random(#hidden)]
-            handleLetter(ch)
-            Game.message = ("Hint: otkriveno '%s' (-%d)"):format(ch, POWER.hintCost)
-            nextTurn()
-            return
-        end
-
-        if key == "f2" then
+        elseif key == "f2" then
+            playClick()
             local p = currentPlayer()
-            if p.shield then
-                Game.message = "Shield je vec aktivan."
-                return
+            if not p.shield and p.score >= POWER.shieldCost then
+                p:addScore(-POWER.shieldCost)
+                p.shield = true
+                nextTurn()
             end
-            if p.score < POWER.shieldCost then
-                Game.message = ("Shield kosta %d bodova."):format(POWER.shieldCost)
-                return
-            end
-            p:addScore(-POWER.shieldCost)
-            p.shield = true
-            Game.message = ("Shield aktiviran (-%d)."):format(POWER.shieldCost)
-            nextTurn()
-            return
-        end
-
-        if key == "return" or key == "kpenter" then
+        elseif key == "return" or key == "kpenter" then
+            playClick()
             local guess = upperTrim(Game.input)
-            local wordLen = #Game.word
-            local guessLen = #guess
-
-            if guess == "" then
-                Game.message = "Upisi slovo ili rijec pa Enter."
-                return
-            end
-            Game.input = ""
-
-            if guessLen == 1 then
-                handleLetter(guess)
-            elseif guessLen == wordLen then
-                handleWordGuess(guess)
-            else
-                Game.message = ("Nevazeci unos! Mora biti 1 slovo ili tocno %d znakova."):format(wordLen)
-                playS(sounds.click)
+            if guess ~= "" then
+                Game.input = ""
+                if #guess == 1 then handleLetter(guess)
+                elseif #guess == #Game.word then handleWordGuess(guess) end
             end
         end
+    elseif Game.state == "round_end" then
+        if key == "n" then 
+            playClick()
+            Game.skipInput = true 
+            Game.round = Game.round + 1
+            Game.state = "play"
+            playMusic(sounds.bgmGame)
+            startRound()
+        elseif key == "r" then 
+            playClick()
+            initStartSequence() 
+        end
+    elseif Game.state == "match_end" then
+        if key == "r" then playClick(); initStartSequence()
+        elseif key == "l" then playClick(); Game.state = "leaderboard" end
+    elseif Game.state == "highscore_entry" then
+        if key == "backspace" then playClick(); Game.tempName = Game.tempName:sub(1, -2)
+        elseif (key == "return" or key == "kpenter") and #Game.tempName > 0 then
+            playClick()
+            table.insert(Game.highscores, {name=Game.tempName, score=Game.winnerPlayer.score})
+            table.sort(Game.highscores, function(a,b) return a.score > b.score end)
+            Storage.save(Game.highscores)
+            Game.state = "leaderboard"
+            playSfx(sounds.correct)
+        end
+    elseif Game.state == "leaderboard" then
+        if key == "r" then playClick(); initStartSequence() end
     end
 end
 
